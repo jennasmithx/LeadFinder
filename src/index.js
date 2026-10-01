@@ -1,70 +1,73 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { findLeads, loadEnv } from './finder.js';
+import { loadEnv } from './env.js';
+import { createStore } from './store.js';
+import { buildWorkbook } from './sheet.js';
+import { startGenerate, checkJob, listLeads } from './core.js';
 
 const HELP = `
-Find businesses with no website (and a WhatsApp-able number) and log them to Excel.
-Prefer clicking? Run "npm start" and open http://localhost:3000 instead.
+Find businesses with no website and a WhatsApp number. Prefer clicking? Run "npm start".
 
 Usage:
-  npm run find -- --type "beauty salons" --location "Johannesburg" --limit 100
+  npm run find -- --type "beauty salons,gyms" --location "Johannesburg" --limit 30
 
 Options:
-  -t, --type       What to search for. Comma-separate for several: "beauty salons,gyms,barbers"
-  -l, --location   Where. Johannesburg / Cape Town / Durban / Pretoria, or any place name.
-                   Comma-separate for several.
-  -n, --limit      Stop after this many NEW leads (default 100)
-  -o, --out        Excel file to write/append to (default leads.xlsx)
-  -c, --country    Country code for phone numbers (default ZA)
-      --any-phone  Keep landlines too (default: only mobile/WhatsApp numbers)
-      --no-social  Skip businesses whose only "website" is Facebook/Instagram/etc. (Google only)
+  -t, --type         What to search for (comma-separated)
+  -l, --location     Johannesburg / Cape Town / Durban / Pretoria (searches the next suburb each run),
+                     or any place name
+  -n, --limit        Roughly how many leads to aim for (default 30)
+  -o, --out          Excel file with ALL your saved leads (default leads.xlsx)
+      --min-rating   Only businesses rated at least this (e.g. 4)
+      --min-reviews  Only businesses with at least this many reviews
+      --any-phone    Keep landlines too
   -h, --help
-
-Needs APIFY_TOKEN (free, no card) or GOOGLE_MAPS_API_KEY in a .env file. See README.
 `;
 
-const split = (s) => s.split(',').map((x) => x.trim()).filter(Boolean);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const { values } = parseArgs({
     options: {
       type: { type: 'string', short: 't' },
       location: { type: 'string', short: 'l' },
-      limit: { type: 'string', short: 'n', default: '100' },
+      limit: { type: 'string', short: 'n', default: '30' },
       out: { type: 'string', short: 'o', default: 'leads.xlsx' },
-      country: { type: 'string', short: 'c', default: 'ZA' },
+      'min-rating': { type: 'string', default: '0' },
+      'min-reviews': { type: 'string', default: '0' },
       'any-phone': { type: 'boolean', default: false },
-      'no-social': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   });
-
   if (values.help || !values.type || !values.location) {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
   loadEnv();
+  const ctx = { env: process.env, store: createStore(process.env), fetchImpl: fetch };
 
-  const limit = Number(values.limit);
-  const events = findLeads({
-    types: split(values.type),
-    locations: split(values.location),
-    limit,
-    out: values.out,
-    country: values.country.toUpperCase(),
-    includeSocial: !values['no-social'],
-    requireWhatsapp: !values['any-phone'],
+  let result = await startGenerate(ctx, {
+    types: values.type.split(','),
+    location: values.location,
+    limit: values.limit,
+    minRating: values['min-rating'],
+    minReviews: values['min-reviews'],
+    includeLandlines: values['any-phone'],
   });
-
-  for await (const e of events) {
-    if (e.type === 'searching') console.log(`Searching (${e.source}): ${e.search}`);
-    if (e.type === 'lead') console.log(`  + ${e.lead.name}  ${e.lead.phone}  ${e.lead.whatsappLink}`);
-    if (e.type === 'done') {
-      console.log(`\nScanned ${e.scanned} businesses, added ${e.added} new leads to ${e.file}.`);
-      for (const [reason, n] of Object.entries(e.skipped)) console.log(`  skipped ${n}: ${reason}`);
-      if (e.added < limit) console.log(`\nFound fewer than ${limit}. Try more business types or another city.`);
-    }
+  console.log(`Searching ${result.area}…`);
+  const { jobId } = result;
+  while (!result.done) {
+    await sleep(10_000);
+    result = await checkJob(ctx, jobId);
+    if (!result.done) console.log(`  still searching (${result.status.toLowerCase()})…`);
   }
+  if (result.error) throw new Error(result.error);
+
+  console.log(`\nChecked ${result.scanned} businesses, added ${result.added} new leads.`);
+  for (const [reason, n] of Object.entries(result.skipped)) console.log(`  skipped ${n}: ${reason}`);
+  const leads = await listLeads(ctx.store);
+  fs.writeFileSync(values.out, await buildWorkbook(leads));
+  console.log(`Saved all ${leads.length} leads to ${values.out}`);
 }
 
 main().catch((err) => {

@@ -1,70 +1,67 @@
 # Lead Finder
 
-Finds businesses on Google Maps that have **no website** and a **WhatsApp number**, and saves them to `leads.xlsx` with a click-to-chat WhatsApp link for each one.
+Finds businesses on Google Maps with **no website** and a **WhatsApp number**. Pick a city and business types, tap **Generate**, and message them straight from your phone.
 
-Pick a city and business types on a small website that runs on your own computer, click **Generate**, and get your leads.
+- Searches Johannesburg, Cape Town, Durban, Pretoria, or any place you type.
+- **Every Generate searches the next suburb** (Sandton, then Randburg, then Rosebank…), so you get new businesses each time and never duplicates.
+- Filters: minimum star rating, minimum number of reviews, landlines on or off.
+- Each lead has a **WhatsApp button**, a Google Maps link, a **status** (New → Messaged → Replied → Interested / Not interested) and **notes**.
+- **Download Excel** whenever you want a spreadsheet of everything.
+- Password protected.
 
-## Setup (one time, about 10 minutes)
+## Put it online with Vercel (works on your phone)
 
-1. **Install Node.js** (version 22 or newer) from https://nodejs.org.
-2. **Get a free Apify account. No card needed.**
-   - Sign up at https://apify.com.
-   - Go to **Settings → API & Integrations** (https://console.apify.com/settings/integrations) and copy your **API token**.
-3. **Download this project**, open a terminal in its folder, and run:
-   ```bash
-   npm install
-   ```
-4. Make a copy of `.env.example` named `.env`. Open it and paste your token after `APIFY_TOKEN=`.
+You need a free **Apify** account (for the business data) and a free **Vercel** account (for the website). Neither needs a card.
 
-## Use it
+1. **Apify token:** sign up at https://apify.com, then open https://console.apify.com/settings/integrations and copy your **Personal API token**.
+2. **Vercel:** go to https://vercel.com, tap **Sign Up**, and choose **Continue with GitHub**.
+3. Tap **Add New… → Project** and **Import** the `testing` repository.
+4. Open **Environment Variables** and add:
+   | Name | Value |
+   |---|---|
+   | `APIFY_TOKEN` | your Apify token |
+   | `APP_PASSWORD` | a password you make up |
+5. Tap **Deploy**. When it's done, open your link (like `https://testing-abc.vercel.app`) and enter your password.
+6. Optional: in your phone's browser menu, choose **Add to Home Screen**.
 
-```bash
-npm start
-```
+Changed a variable later? Go to **Deployments → ⋯ → Redeploy** so it takes effect.
 
-Then open **http://localhost:3000** in your browser:
+## Or run it on your own computer
 
-1. Pick a city: Johannesburg, Cape Town, Durban, Pretoria, or type any other place.
-2. Pick business types (salons, gyms, barbers…) or type your own.
-3. Choose how many leads you want, then click **Generate**.
-4. Leads appear as they're found. Click a number to open a WhatsApp chat, or **Download Excel** for the spreadsheet.
+1. Install Node.js 20+ from https://nodejs.org.
+2. In this folder run `npm install`.
+3. Copy `.env.example` to `.env` and paste your `APIFY_TOKEN` in.
+4. Run `npm start` and open http://localhost:3000.
 
-Every run **adds** to the same `leads.xlsx`. Businesses already in it are skipped, so you never get duplicates. Your notes in the **Status** and **Notes** columns are kept.
+The computer and Vercel versions share the same saved leads (they're stored in your Apify account), so you can use either one.
 
-Close the terminal (or press Ctrl+C) to stop it.
+## How it decides
 
-## What you get
-
-| Column | |
-|---|---|
-| Business, Category, Address | From Google Maps |
-| Phone | The business's mobile number |
-| WhatsApp? | `Likely` = mobile number. `Confirmed` = the listing links to WhatsApp |
-| WhatsApp link | `wa.me/…`: click to open a chat |
-| Social page | Their Facebook/Instagram page, if that's all they have (Google source only) |
-| Rating, Reviews, Google Maps | From Google Maps |
-| Status, Notes | Empty, for you to track who you've contacted |
-
-**How it decides:**
-- **No website:** only businesses with no website on their Google listing are kept.
-- **WhatsApp:** Google doesn't say whether a number is on WhatsApp, so the tool keeps **mobile numbers** (06x/07x/08x in South Africa, almost all on WhatsApp) and drops landlines. Tick **Include landlines** to keep those too.
+- **No website:** only businesses with no website on their Google listing.
+- **WhatsApp:** Google doesn't say whether a number is on WhatsApp, so it keeps **mobile numbers** (06x/07x/08x, nearly all on WhatsApp) and skips landlines. Tap the WhatsApp button; if a number isn't on WhatsApp, WhatsApp tells you right away.
 - Closed businesses are skipped.
 
-## Is it free?
+## Cost
 
-Apify gives free accounts **$5 of credit every month**. This tool costs about **$0.005 per business found**, so the free credit covers roughly **1,000 businesses a month**. When the credit runs out, Apify stops; it can't charge you without a card. Check the current prices at https://apify.com/compass/crawler-google-places.
+Apify's free plan gives **$5 of credit every month**, and it resets monthly. Business data costs about **$0.005 per business**, so that's roughly **1,000 businesses a month**. If the credit runs out, searches stop until next month; with no card, nothing can be charged. Current prices: https://apify.com/compass/crawler-google-places
 
-## Using Google instead (optional)
+Tip: each search costs about the same whether you ask for 10 or 50 leads, so asking for 30–50 at a time and working through them is the best use of your credit.
 
-If you ever add a card to Google Cloud, put `GOOGLE_MAPS_API_KEY=` in `.env` instead (enable **Places API (New)**). Google gives 1,000 free searches a month, about 20,000 businesses. To make sure you're never charged, set the **requests per day** quota to 30 under *APIs & Services → Places API (New) → Quotas*. If both keys are set, Apify is used.
+## Where your data lives
+
+Leads, statuses and notes are saved in a storage area called **lead-finder** in your Apify account (Apify → **Storage → Key-value stores**). Searches started from the website appear under Apify → **Runs**.
 
 ## Command line (optional)
 
 ```bash
-npm run find -- --type "beauty salons,gyms" --location "Durban" --limit 100
+npm run find -- --type "beauty salons,gyms" --location "Durban" --limit 30
 ```
 
-Run `npm run find -- --help` for all options.
+It saves all your leads to `leads.xlsx`. Run `npm run find -- --help` for options.
+
+## Using Google instead of Apify (optional)
+
+Set `GOOGLE_MAPS_API_KEY` instead of `APIFY_TOKEN` (needs a card on Google Cloud; enable **Places API (New)**; 1,000 free searches a month). This only works on your own computer, because the Vercel version saves leads in Apify.
 
 ## Tests
 

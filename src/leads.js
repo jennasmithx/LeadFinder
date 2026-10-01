@@ -66,12 +66,14 @@ export function toLead(place, { search, defaultCountry }) {
 }
 
 // Returns a reason string if the place should be skipped, otherwise null.
-export function rejectReason(place, { includeSocial, requireWhatsapp, defaultCountry }) {
+export function rejectReason(place, { includeSocial = true, requireWhatsapp = true, minRating = 0, minReviews = 0, defaultCountry }) {
   if (place.businessStatus && place.businessStatus !== 'OPERATIONAL') return 'not operational';
   const kind = websiteKind(place.websiteUri);
   if (kind === 'website') return 'has website';
   if (kind === 'social' && !includeSocial) return 'has social page';
   if (!place.nationalPhoneNumber && !place.internationalPhoneNumber) return 'no phone';
   if (requireWhatsapp && whatsappStatus(place, defaultCountry) === 'No') return 'no WhatsApp';
+  if (minRating && !(place.rating >= minRating)) return 'rating too low';
+  if (minReviews && !((place.userRatingCount ?? 0) >= minReviews)) return 'too few reviews';
   return null;
 }

@@ -1,14 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { websiteKind, whatsappStatus, rejectReason, toLead } from '../src/leads.js';
 import { searchPlaces } from '../src/places.js';
-import { appendLeads, existingPlaceIds } from '../src/sheet.js';
+import { buildWorkbook } from '../src/sheet.js';
+import ExcelJS from 'exceljs';
 
-const opts = { includeSocial: true, requireWhatsapp: true, defaultCountry: 'ZA' };
-const mobile = { id: 'a', displayName: { text: 'Glow Nails' }, nationalPhoneNumber: '082 555 1234', businessStatus: 'OPERATIONAL' };
+const opts = { defaultCountry: 'ZA' };
+const mobile = { id: 'a', displayName: { text: 'Glow Nails' }, nationalPhoneNumber: '082 555 1234', businessStatus: 'OPERATIONAL', rating: 4.2, userRatingCount: 12 };
 const landline = { id: 'b', displayName: { text: 'Old Salon' }, nationalPhoneNumber: '011 555 1234', businessStatus: 'OPERATIONAL' };
 
 test('website classification', () => {
@@ -31,6 +29,9 @@ test('filtering', () => {
   assert.equal(rejectReason({ ...mobile, websiteUri: 'https://glow.co.za' }, opts), 'has website');
   assert.equal(rejectReason({ ...mobile, websiteUri: 'https://instagram.com/g' }, { ...opts, includeSocial: false }), 'has social page');
   assert.equal(rejectReason({ ...mobile, businessStatus: 'CLOSED_PERMANENTLY' }, opts), 'not operational');
+  assert.equal(rejectReason(mobile, { ...opts, minRating: 4.5 }), 'rating too low');
+  assert.equal(rejectReason(mobile, { ...opts, minReviews: 20 }), 'too few reviews');
+  assert.equal(rejectReason(mobile, { ...opts, minRating: 4, minReviews: 10 }), null);
 });
 
 test('lead has wa.me link', () => {
@@ -39,7 +40,7 @@ test('lead has wa.me link', () => {
   assert.equal(lead.phone, '+27 82 555 1234');
 });
 
-test('search follows page tokens', async () => {
+test('google search follows page tokens', async () => {
   const pages = [{ places: [mobile], nextPageToken: 't' }, { places: [landline] }];
   const bodies = [];
   const fetchImpl = async (_u, init) => {
@@ -52,9 +53,12 @@ test('search follows page tokens', async () => {
   assert.equal(bodies[1].pageToken, 't');
 });
 
-test('sheet appends and dedupes by place id', async () => {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'leads-')), 'leads.xlsx');
-  await appendLeads(file, [toLead(mobile, { search: 's', defaultCountry: 'ZA' })]);
-  await appendLeads(file, [toLead(landline, { search: 's', defaultCountry: 'ZA' })]);
-  assert.deepEqual([...(await existingPlaceIds(file))], ['a', 'b']);
+test('excel export includes status and clickable links', async () => {
+  const lead = { ...toLead(mobile, { search: 's', defaultCountry: 'ZA' }), status: 'Messaged', notes: 'call back' };
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await buildWorkbook([lead]));
+  const row = wb.getWorksheet('Leads').getRow(2);
+  assert.equal(row.getCell(1).value, 'Glow Nails');
+  assert.equal(row.getCell(5).value.hyperlink, 'https://wa.me/27825551234');
+  assert.equal(row.getCell(6).value, 'Messaged');
 });

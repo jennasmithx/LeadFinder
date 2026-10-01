@@ -1,18 +1,48 @@
-// Apify "Google Maps Scraper" (compass/crawler-google-places).
+// Apify: runs the "Google Maps Scraper" (compass/crawler-google-places) and stores your leads.
 // Free Apify accounts get monthly credit with no card: https://apify.com/pricing
-// Pricing for this actor: https://apify.com/compass/crawler-google-places
 
 const API = 'https://api.apify.com/v2';
 const ACTOR = 'compass~crawler-google-places';
-const DONE = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
+const FINISHED = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
 
-async function call(fetchImpl, token, path, init = {}) {
-  const res = await fetchImpl(`${API}${path}`, {
+export const isFinished = (status) => FINISHED.has(status);
+
+export function apifyFetch(fetchImpl, token, path, init = {}) {
+  return fetchImpl(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...init.headers },
   });
+}
+
+async function call(fetchImpl, token, path, init) {
+  const res = await apifyFetch(fetchImpl, token, path, init);
   if (!res.ok) throw new Error(`Apify ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+// Only places WITHOUT a website are fetched (Apify filters them for us), which keeps credit usage low.
+export function buildInput(types, location, maxPerSearch) {
+  return {
+    searchStringsArray: types,
+    locationQuery: location,
+    maxCrawledPlacesPerSearch: maxPerSearch,
+    website: 'withoutWebsite',
+    language: 'en',
+  };
+}
+
+export async function startRun({ token, input, fetchImpl = fetch }) {
+  const { data } = await call(fetchImpl, token, `/acts/${ACTOR}/runs`, { method: 'POST', body: JSON.stringify(input) });
+  return data;
+}
+
+export async function getRun({ token, id, fetchImpl = fetch }) {
+  const { data } = await call(fetchImpl, token, `/actor-runs/${encodeURIComponent(id)}`);
+  return data;
+}
+
+export function getItems({ token, datasetId, fetchImpl = fetch }) {
+  return call(fetchImpl, token, `/datasets/${datasetId}/items?clean=true&format=json`);
 }
 
 // Converts an Apify result into the same shape the Google Places API returns,
@@ -35,27 +65,4 @@ export function normalize(item) {
     businessStatus,
     searchString: item.searchString,
   };
-}
-
-// Runs one scrape for several search terms in one location and yields the results.
-// Only places WITHOUT a website are fetched (Apify filters them for us), which keeps credit usage low.
-export async function* searchApify({ types, location, maxPerSearch, token, fetchImpl = fetch, pollSecs = 60 }) {
-  const input = {
-    searchStringsArray: types,
-    locationQuery: location,
-    maxCrawledPlacesPerSearch: maxPerSearch,
-    website: 'withoutWebsite',
-    language: 'en',
-  };
-  let { data: run } = await call(fetchImpl, token, `/acts/${ACTOR}/runs?waitForFinish=${pollSecs}`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  while (!DONE.has(run.status)) {
-    ({ data: run } = await call(fetchImpl, token, `/actor-runs/${run.id}?waitForFinish=${pollSecs}`));
-  }
-  if (run.status !== 'SUCCEEDED') throw new Error(`Apify run ${run.status.toLowerCase()} (run id ${run.id})`);
-
-  const items = await call(fetchImpl, token, `/datasets/${run.defaultDatasetId}/items?clean=true&format=json`);
-  yield items.map(normalize);
 }
