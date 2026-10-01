@@ -14,7 +14,7 @@ Usage:
 
 Options:
   -t, --type         What to search for (comma-separated)
-  -l, --location     Johannesburg / Cape Town / Durban / Pretoria (searches the next suburb each run),
+  -l, --location     A province (e.g. Limpopo), a town (e.g. Durban), "South Africa" — searches the next area each run —
                      or any place name
   -n, --limit        Roughly how many leads to aim for (default 30)
   -o, --out          Excel file with ALL your saved leads (default leads.xlsx)

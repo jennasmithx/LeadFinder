@@ -1,4 +1,4 @@
-import { CITIES } from './cities.js';
+import { resolveScope } from './cities.js';
 import * as apify from './apify.js';
 import { searchPlaces } from './places.js';
 import { toLead, rejectReason } from './leads.js';
@@ -45,24 +45,27 @@ export function pickSource(env = process.env) {
 
 const norm = (s) => String(s).toLowerCase().trim();
 
-// Picks the next suburb to search, so each Generate covers new ground.
-// After every suburb has been searched once, it digs deeper into each one.
-export async function planSearch(store, { location, types, limit }) {
-  const city = Object.keys(CITIES).find((c) => norm(c) === norm(location));
-  const areas = city ? CITIES[city] : [location];
-  const rotation = await store.get('rotation', {});
-  const key = `${norm(location)}|${types.map(norm).sort().join(',')}`;
-  const n = rotation[key] ?? 0;
-  rotation[key] = n + 1;
-  await store.set('rotation', rotation);
-
-  const area = areas[n % areas.length];
-  const round = Math.floor(n / areas.length);
+// Picks the area searched the fewest times so far (first in the list on a tie), so each
+// Generate covers new ground. History is per area, so picking a province, a town or
+// "All of South Africa" never repeats an area another choice already covered;
+// an area that's been searched before is searched deeper.
+export async function planSearch(store, { scope, types, limit }) {
+  const searched = await store.get('searched', {});
+  const typeKey = types.map(norm).sort().join(',');
+  const key = (area) => `${norm(area.query)}|${typeKey}`;
+  let area = scope.areas[0];
+  let times = Infinity;
+  for (const a of scope.areas) {
+    const n = searched[key(a)] ?? 0;
+    if (n < times) [area, times] = [a, n];
+  }
+  searched[key(area)] = times + 1;
+  await store.set('searched', searched);
   return {
-    area: city ? `${area}, ${city}` : area,
-    query: city ? `${area}, ${city}, South Africa` : location,
+    area: area.label,
+    query: area.query,
     // ~1.5x the target, since some results get dropped (landlines, low ratings).
-    maxPerSearch: Math.ceil((limit * 1.5) / types.length) * (round + 1),
+    maxPerSearch: Math.ceil((limit * 1.5) / types.length) * (times + 1),
   };
 }
 
@@ -91,11 +94,12 @@ function parseRequest(body) {
     .map((s) => String(s).trim())
     .filter(Boolean)
     .slice(0, 10);
-  const location = String(body.location ?? '').trim();
-  if (!types.length || !location) throw new UserError('Pick a city and at least one business type.');
+  if (!types.length) throw new UserError('Pick at least one business type.');
+  const scope = resolveScope(body);
+  if (!scope) throw new UserError('Pick a province or type a place.');
   return {
     types,
-    location,
+    scope,
     limit: Math.min(Math.max(Number(body.limit) || 30, 1), 300),
     filters: {
       requireWhatsapp: !body.includeLandlines,
@@ -108,10 +112,10 @@ function parseRequest(body) {
 
 // Starts a search. Google finishes straight away; Apify returns a job id to check with checkJob.
 export async function startGenerate({ env, store, fetchImpl = fetch }, body) {
-  const { types, location, limit, filters } = parseRequest(body);
+  const { types, scope, limit, filters } = parseRequest(body);
   const source = pickSource(env);
   if (!source) throw new UserError('No API key found. Set APIFY_TOKEN (see README).', 500);
-  const plan = await planSearch(store, { location, types, limit });
+  const plan = await planSearch(store, { scope, types, limit });
 
   if (source === 'google') {
     const places = [];

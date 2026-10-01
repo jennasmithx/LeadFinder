@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { createStore } from './store.js';
 import { buildWorkbook } from './sheet.js';
-import { CITIES, BUSINESS_TYPES } from './cities.js';
+import { PROVINCES, ALL_SA, BUSINESS_TYPES } from './cities.js';
 import {
   STATUSES, UserError, pickSource, startGenerate, checkJob, updateLead, listLeads,
   getSettings, saveSettings, whatsappLinkWithMessage,
@@ -15,7 +15,8 @@ const routes = {
     run: ({ env }) => ({
       source: pickSource(env),
       needsPassword: Boolean(env.APP_PASSWORD),
-      cities: Object.keys(CITIES),
+      allSA: ALL_SA,
+      provinces: Object.fromEntries(Object.entries(PROVINCES).map(([p, towns]) => [p, Object.keys(towns)])),
       types: BUSINESS_TYPES,
       statuses: STATUSES,
     }),

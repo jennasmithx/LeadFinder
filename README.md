@@ -2,8 +2,8 @@
 
 Finds businesses on Google Maps with **no website** and a **WhatsApp number**. Pick a city and business types, tap **Generate**, and message them straight from your phone.
 
-- Searches Johannesburg, Cape Town, Durban, Pretoria, or any place you type.
-- **Every Generate searches the next suburb** (Sandton, then Randburg, then Rosebank…), so you get new businesses each time and never duplicates.
+- Searches **anywhere in South Africa**: pick all of SA, one of the 9 provinces, a town in it (Johannesburg, Polokwane, Gqeberha…), or type any place.
+- **Every Generate searches the next area** (Sandton, then Randburg… or Polokwane, then Tzaneen…), so you get new businesses each time and never duplicates. Areas already searched are searched deeper next time.
 - Filters: minimum star rating, minimum number of reviews, landlines on or off.
 - Each lead has a **WhatsApp button**, a Google Maps link, a **status** (New → Messaged → Replied → Interested / Not interested) and **notes**.
 - **Your WhatsApp message:** write it once with `{business}` where the name goes. Every WhatsApp button then opens the chat with it already typed, e.g. *"Hi Glow Nails, I came across your business…"*.

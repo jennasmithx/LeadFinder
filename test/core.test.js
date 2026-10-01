@@ -4,6 +4,7 @@ import { MemoryStore } from '../src/store.js';
 import { planSearch, startGenerate, checkJob, updateLead, listLeads, getSettings, saveSettings, whatsappLinkWithMessage } from '../src/core.js';
 import { handle } from '../src/api.js';
 import { buildInput, normalize } from '../src/apify.js';
+import { resolveScope } from '../src/cities.js';
 
 const items = [
   { placeId: 'p1', title: 'Glow Nails', phone: '082 555 1234', phoneUnformatted: '+27825551234', address: 'Sandton', totalScore: 4.6, reviewsCount: 30, searchString: 'nail salons' },
@@ -32,19 +33,38 @@ test('normalize and input', () => {
   assert.equal(buildInput(['gyms'], 'Durban', 5).website, 'withoutWebsite');
 });
 
-test('planSearch rotates through suburbs, then digs deeper', async () => {
+test('planSearch rotates through areas, then digs deeper', async () => {
   const store = new MemoryStore();
-  const a = await planSearch(store, { location: 'Durban', types: ['gyms'], limit: 10 });
-  const b = await planSearch(store, { location: 'durban', types: ['gyms'], limit: 10 });
+  const durban = resolveScope({ location: 'durban' });
+  const a = await planSearch(store, { scope: durban, types: ['gyms'], limit: 10 });
+  const b = await planSearch(store, { scope: resolveScope({ province: 'KwaZulu-Natal', town: 'Durban' }), types: ['gyms'], limit: 10 });
   assert.equal(a.area, 'Durban CBD, Durban');
   assert.equal(a.query, 'Durban CBD, Durban, South Africa');
-  assert.equal(b.area, 'Umhlanga, Durban');
-  for (let i = 2; i < 16; i++) await planSearch(store, { location: 'Durban', types: ['gyms'], limit: 10 });
-  const again = await planSearch(store, { location: 'Durban', types: ['gyms'], limit: 10 });
+  assert.equal(b.area, 'Umhlanga, Durban'); // typed "durban" and picking Durban share one rotation
+  for (let i = 2; i < 16; i++) await planSearch(store, { scope: durban, types: ['gyms'], limit: 10 });
+  const again = await planSearch(store, { scope: durban, types: ['gyms'], limit: 10 });
   assert.equal(again.area, 'Durban CBD, Durban');
   assert.equal(again.maxPerSearch, a.maxPerSearch * 2);
-  const custom = await planSearch(store, { location: 'Polokwane', types: ['gyms'], limit: 10 });
-  assert.equal(custom.query, 'Polokwane');
+});
+
+test('provinces, all of SA and typed places', async () => {
+  const store = new MemoryStore();
+  const plan = (body) => planSearch(store, { scope: resolveScope(body), types: ['plumbers'], limit: 10 });
+  assert.deepEqual([(await plan({ province: 'Limpopo' })).area, (await plan({ province: 'Limpopo' })).area], ['Polokwane, Limpopo', 'Tzaneen, Limpopo']);
+  // A province spreads across its towns rather than doing every Joburg suburb first.
+  const gp = resolveScope({ province: 'Gauteng' }).areas.slice(0, 3).map((x) => x.label);
+  assert.deepEqual(gp, ['Sandton, Johannesburg', 'Pretoria CBD, Pretoria', 'Benoni, Ekurhuleni']);
+  const sa = resolveScope({ province: 'All of South Africa' });
+  assert.deepEqual(sa.areas.slice(0, 2).map((x) => x.label), ['Sandton, Johannesburg', 'Cape Town CBD, Cape Town']);
+  assert.equal(new Set(sa.areas.map((x) => x.query)).size, sa.areas.length);
+  assert.equal((await plan({ location: 'Hogsback' })).query, 'Hogsback, South Africa');
+  assert.equal((await plan({ location: 'limpopo' })).area, 'Mokopane, Limpopo'); // same rotation as picking Limpopo
+  // Tzaneen was already searched via Limpopo, so picking it directly searches deeper.
+  const tz = await plan({ province: 'Limpopo', town: 'Tzaneen' });
+  assert.equal(tz.area, 'Tzaneen, Limpopo');
+  assert.equal(tz.maxPerSearch, 2 * (await plan({ province: 'Northern Cape' })).maxPerSearch);
+  assert.equal(resolveScope({ province: 'Atlantis' }), null);
+  assert.equal(resolveScope({ province: 'Gauteng', town: 'Durban' }), null);
 });
 
 test('generate → job → leads saved once, filters applied', async () => {
@@ -52,7 +72,7 @@ test('generate → job → leads saved once, filters applied', async () => {
   const { fetchImpl, calls } = fakeApify();
   const ctx = { env: { APIFY_TOKEN: 't' }, store, fetchImpl };
 
-  const started = await startGenerate(ctx, { location: 'Johannesburg', types: ['nail salons'], limit: 10, minRating: 3 });
+  const started = await startGenerate(ctx, { province: 'Gauteng', town: 'Johannesburg', types: ['nail salons'], limit: 10, minRating: 3 });
   assert.equal(started.done, false);
   assert.equal(started.area, 'Sandton, Johannesburg');
   assert.equal(JSON.parse(calls[0].init.body).locationQuery, 'Sandton, Johannesburg, South Africa');

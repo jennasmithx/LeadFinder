@@ -89,9 +89,13 @@
 
     <section class="card">
       <div class="field">
-        <span class="label">City</span>
-        <div class="chips" id="cities"></div>
-        <div id="otherWrap" style="margin-top:10px" hidden><input type="text" id="otherCity" placeholder="e.g. Polokwane, or Soweto, Johannesburg"></div>
+        <span class="label">Where</span>
+        <div class="chips" id="provinces"></div>
+        <div id="townWrap" style="margin-top:12px" hidden>
+          <span class="label" id="townLabel" style="font-size:14px"></span>
+          <div class="chips" id="towns"></div>
+        </div>
+        <div id="otherWrap" style="margin-top:10px" hidden><input type="text" id="otherCity" placeholder="Any town or area, e.g. Hogsback, or Soweto, Johannesburg"></div>
       </div>
       <div class="field">
         <span class="label">Business types</span>
@@ -108,7 +112,7 @@
       </div>
       <div class="actions">
         <button class="btn primary" id="go">Generate</button>
-        <span class="hint">Each Generate searches the next suburb, so you get new businesses every time.</span>
+        <span class="hint">Each Generate searches the next area, so you get new businesses every time.</span>
       </div>
       <p id="status" class="notice" hidden></p>
     </section>
@@ -144,8 +148,30 @@ const store = {
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 
-let cfg, leads = [], message = '', filter = 'All', city = 'Johannesburg', fresh = new Set(store.get('fresh')?.split(',') ?? []);
+const TYPE_PLACE = 'Type a place…';
+let cfg, leads = [], message = '', filter = 'All', fresh = new Set(store.get('fresh')?.split(',') ?? []);
 const picked = new Set(['beauty salons']);
+// Where to search: a province (or All of SA / a typed place) and optionally one town. Remembered on this device.
+let where = JSON.parse(store.get('where') ?? 'null') ?? { province: 'Gauteng', town: 'Johannesburg' };
+
+function renderWhere() {
+  store.set('where', JSON.stringify(where));
+  const provs = [cfg.allSA, ...Object.keys(cfg.provinces), TYPE_PLACE];
+  $('provinces').replaceChildren(...provs.map((p) => chip(p, p === where.province, () => {
+    where = { province: p, town: '' };
+    renderWhere();
+  })));
+  const towns = cfg.provinces[where.province];
+  $('townWrap').hidden = !towns;
+  $('otherWrap').hidden = where.province !== TYPE_PLACE;
+  if (towns) {
+    $('townLabel').textContent = `Area in ${where.province}`;
+    $('towns').replaceChildren(...['', ...towns].map((t) => chip(t || 'All areas', t === where.town, () => {
+      where.town = t;
+      renderWhere();
+    })));
+  }
+}
 
 async function api(path, opts = {}) {
   const res = await fetch(`/api/${path}`, { ...opts, headers: { 'Content-Type': 'application/json', 'x-app-password': store.get('pw') ?? '', ...opts.headers } });
@@ -249,7 +275,7 @@ function render() {
   renderFilters();
   $('count').textContent = `Your leads (${leads.length})`;
   const shown = leads.filter((l) => filter === 'All' || l.status === filter).slice().reverse();
-  $('list').replaceChildren(...(shown.length ? shown.map(leadRow) : [el('p', { className: 'empty', textContent: leads.length ? 'None with this status.' : 'No leads yet. Pick a city and click Generate.' })]));
+  $('list').replaceChildren(...(shown.length ? shown.map(leadRow) : [el('p', { className: 'empty', textContent: leads.length ? 'None with this status.' : 'No leads yet. Pick where and what, then click Generate.' })]));
 }
 
 async function loadLeads() {
@@ -292,15 +318,16 @@ async function follow(jobId, area) {
 }
 
 $('go').onclick = async () => {
-  const location = city === 'Other…' ? $('otherCity').value.trim() : city;
-  if (!location) return status('Type a city or area first.', 'err');
+  const typed = where.province === TYPE_PLACE;
+  if (typed && !$('otherCity').value.trim()) return status('Type a town or area first.', 'err');
+  const place = typed ? { location: $('otherCity').value.trim() } : { province: where.province, town: where.town };
   if (!picked.size && !$('customType').value.trim()) return status('Pick at least one business type.', 'err');
   $('go').disabled = true;
   status('Starting…');
   try {
     const r = await getJson('generate', {
       method: 'POST',
-      body: JSON.stringify({ location, types: [...picked], customType: $('customType').value, limit: $('limit').value,
+      body: JSON.stringify({ ...place, types: [...picked], customType: $('customType').value, limit: $('limit').value,
         minRating: $('minRating').value, minReviews: $('minReviews').value, includeLandlines: $('landlines').checked }),
     });
     if (r.done) { await finish(r); $('go').disabled = false; } else await follow(r.jobId, r.area);
@@ -330,14 +357,9 @@ async function start() {
   $('app').hidden = false;
   if (!cfg.source) status('No API key found. Add APIFY_TOKEN (see README).', 'err');
 
-  if (!$('cities').children.length) {
-    for (const c of [...cfg.cities, 'Other…']) {
-      $('cities').append(chip(c, c === city, (b) => {
-        city = c;
-        for (const x of $('cities').children) x.setAttribute('aria-pressed', x === b);
-        $('otherWrap').hidden = c !== 'Other…';
-      }));
-    }
+  if (!$('types').children.length) {
+    if (where.province !== TYPE_PLACE && where.province !== cfg.allSA && !cfg.provinces[where.province]) where = { province: 'Gauteng', town: '' };
+    renderWhere();
     for (const t of cfg.types) {
       $('types').append(chip(t, picked.has(t), (b) => {
         picked.has(t) ? picked.delete(t) : picked.add(t);
