@@ -4,6 +4,7 @@
   "description": "Find businesses on Google Maps with no website and a WhatsApp number, log them to Excel",
   "main": "src/index.js",
   "scripts": {
+    "start": "node src/server.js",
     "find": "node src/index.js",
     "test": "node --test"
   },

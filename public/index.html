@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead Finder</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #16181d; --muted: #646b78; --line: #e2e5ea;
+    --accent: #1f6feb; --accent-text: #fff; --wa: #128c4a; --chip: #eef1f5; --warn: #9a5b00; --warn-bg: #fff4e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #171a21; --text: #e8eaee; --muted: #9aa1ad; --line: #2a2f39;
+      --accent: #4c8dff; --accent-text: #fff; --wa: #3ccf7a; --chip: #232833; --warn: #f0b04a; --warn-bg: #2e2412; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .label { font-weight: 600; margin: 0 0 8px; }
+  .field + .field { margin-top: 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--chip); color: var(--text); border-radius: 999px;
+    padding: 7px 14px; cursor: pointer; font: inherit; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  input[type=text], input[type=number] { font: inherit; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; max-width: 360px; }
+  input[type=number] { max-width: 110px; }
+  .row { display: flex; flex-wrap: wrap; gap: 24px; align-items: end; }
+  .check { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+  button.primary, a.button { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 18px; cursor: pointer; text-decoration: none; }
+  button.primary { background: var(--accent); color: var(--accent-text); border: 0; }
+  button.primary:disabled { opacity: .55; cursor: wait; }
+  a.button { border: 1px solid var(--line); color: var(--text); background: var(--card); }
+  a.button[hidden] { display: none; }
+  .notice { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
+  #status { color: var(--muted); margin: 0 0 12px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .small { color: var(--muted); font-size: 13px; }
+  a.wa { color: var(--wa); font-weight: 600; white-space: nowrap; }
+  a.maps { color: var(--accent); white-space: nowrap; }
+  .empty { color: var(--muted); padding: 16px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lead Finder</h1>
+  <p class="sub">Businesses on Google Maps with <b>no website</b> and a <b>WhatsApp number</b>.</p>
+
+  <div id="nokey" class="notice" hidden>No API key found. Add <code>APIFY_TOKEN</code> to your <code>.env</code> file and restart. The README has the steps.</div>
+
+  <section class="card">
+    <div class="field">
+      <p class="label">City</p>
+      <div class="chips" id="cities"></div>
+      <div id="otherWrap" style="margin-top:10px" hidden><input type="text" id="otherCity" placeholder="e.g. Polokwane, or Soweto, Johannesburg"></div>
+    </div>
+    <div class="field">
+      <p class="label">Business types</p>
+      <div class="chips" id="types"></div>
+      <div style="margin-top:10px"><input type="text" id="customType" placeholder="Something else? e.g. florists, bakeries"></div>
+    </div>
+    <div class="field row">
+      <label><span class="label" style="display:block">How many leads</span><input type="number" id="limit" min="1" max="500" value="50"></label>
+      <label class="check"><input type="checkbox" id="landlines"> Include landlines (no WhatsApp)</label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="go">Generate</button>
+      <a class="button" id="download" href="/api/download" hidden>Download Excel</a>
+    </div>
+  </section>
+
+  <section class="card">
+    <p id="status">Pick a city and business types, then click Generate.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Business</th><th>WhatsApp</th><th>Category</th><th>Found by</th><th></th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="empty">No leads yet.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let city = 'Johannesburg';
+const picked = new Set(['beauty salons']);
+
+function chip(text, pressed, onClick) {
+  const b = document.createElement('button');
+  b.className = 'chip'; b.type = 'button'; b.textContent = text;
+  b.setAttribute('aria-pressed', pressed);
+  b.onclick = () => onClick(b);
+  return b;
+}
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function link(href, text, cls) {
+  const a = el('a', text, cls);
+  a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  return a;
+}
+
+async function init() {
+  const cfg = await (await fetch('/api/config')).json();
+  $('nokey').hidden = !!cfg.source;
+  $('download').hidden = !cfg.hasSheet;
+
+  const cities = $('cities');
+  for (const c of [...cfg.cities, 'Other…']) {
+    cities.append(chip(c, c === city, (b) => {
+      city = c;
+      for (const x of cities.children) x.setAttribute('aria-pressed', x === b);
+      $('otherWrap').hidden = c !== 'Other…';
+    }));
+  }
+  for (const t of cfg.types) {
+    $('types').append(chip(t, picked.has(t), (b) => {
+      picked.has(t) ? picked.delete(t) : picked.add(t);
+      b.setAttribute('aria-pressed', picked.has(t));
+    }));
+  }
+}
+
+function addRow(lead) {
+  const rows = $('rows');
+  if (rows.querySelector('.empty')) rows.innerHTML = '';
+  const tr = document.createElement('tr');
+  const name = el('td'); name.append(el('div', lead.name), el('div', lead.address, 'small'));
+  const wa = el('td');
+  if (lead.whatsappLink) { wa.append(link(lead.whatsappLink, lead.phone, 'wa')); }
+  else wa.textContent = lead.phone;
+  const area = el("td", lead.search, "small");
+  const maps = el('td'); if (lead.mapsUrl) maps.append(link(lead.mapsUrl, 'Maps', 'maps'));
+  tr.append(name, wa, el('td', lead.category, 'small'), area, maps);
+  rows.append(tr);
+}
+
+$('go').onclick = async () => {
+  const location = city === 'Other…' ? $('otherCity').value.trim() : city;
+  if (!location) return ($('status').textContent = 'Type a city or area first.');
+  if (!picked.size && !$('customType').value.trim()) return ($('status').textContent = 'Pick at least one business type.');
+
+  $('go').disabled = true;
+  $('rows').innerHTML = '<tr><td colspan="5" class="empty">Searching… this can take a few minutes.</td></tr>';
+  $('status').textContent = 'Starting…';
+  let count = 0;
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location, types: [...picked], customType: $('customType').value,
+        limit: $('limit').value, includeLandlines: $('landlines').checked }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        const e = JSON.parse(line);
+        if (e.type === 'searching') $('status').textContent = `Searching ${e.search}…`;
+        if (e.type === 'lead') { addRow(e.lead); $('status').textContent = `Found ${++count} so far…`; }
+        if (e.type === 'error') throw new Error(e.message);
+        if (e.type === 'done') {
+          const why = Object.entries(e.skipped).map(([r, n]) => `${n} ${r}`).join(', ');
+          $('status').textContent = `Done. ${e.added} new leads added to leads.xlsx (checked ${e.scanned}${why ? `; skipped ${why}` : ''}).`;
+          if (e.added) $('download').hidden = false;
+          if (!e.added) $('rows').innerHTML = '<tr><td colspan="5" class="empty">No new leads. Try other business types or another city.</td></tr>';
+        }
+      }
+    }
+  } catch (err) {
+    $('status').textContent = `Error: ${err.message}`;
+  } finally {
+    $('go').disabled = false;
+  }
+};
+
+init();
+</script>
+</body>
+</html>
