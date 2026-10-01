@@ -6,8 +6,9 @@ import { toLead, rejectReason } from './leads.js';
 export const STATUSES = ['New', 'Messaged', 'Replied', 'Interested', 'Not interested'];
 
 export const DEFAULT_MESSAGE =
-  "Hi {business}, I came across your business on Google Maps and noticed you don't have a website yet. " +
-  'I build simple, affordable websites for small businesses. Would you like to see an example?';
+  "Hi {business}, I came across your business and wanted to ask if you'd be interested in a website. " +
+  'I build professional websites for businesses to help them get more customers and showcase their services. ' +
+  "If you're interested, I can send you some examples of websites I've built.";
 
 // The WhatsApp chat link with your message already typed, e.g. "Hi Glow Nails, …".
 export function whatsappLinkWithMessage(lead, template) {
