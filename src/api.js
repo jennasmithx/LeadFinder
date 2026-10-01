@@ -7,7 +7,7 @@ import {
   getSettings, saveSettings, whatsappLinkWithMessage,
 } from './core.js';
 
-// Shared by the Vercel functions in /api and the local server (src/server.js).
+// Shared by the Vercel functions in /api and the local server (src/local-server.js).
 const routes = {
   config: {
     method: 'GET',
