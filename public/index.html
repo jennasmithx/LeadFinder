@@ -61,6 +61,16 @@
   .stars { color: #d99a00; }
   #login { max-width: 420px; margin: 12vh auto 0; }
   details summary { cursor: pointer; font-weight: 600; font-size: 17px; }
+  .group { border-top: 1px solid var(--line); }
+  .group:first-child { border-top: 0; }
+  .group > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 0; font-size: 16px; }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary::before { content: '▸'; color: var(--accent); font-size: 14px; width: 12px; transition: transform .15s; }
+  .group[open] > summary::before { transform: rotate(90deg); }
+  .group > summary .meta { font-weight: 400; }
+  .group .lead:first-of-type { border-top: 1px solid var(--line); }
+  .group-body { padding-left: 22px; padding-bottom: 6px; }
+  .linkbtn { background: none; border: 0; color: var(--accent); font: inherit; font-size: 14px; cursor: pointer; padding: 4px 0; }
   textarea { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
     padding: 10px; width: 100%; min-height: 110px; resize: vertical; margin-top: 12px; }
   .preview { background: var(--wa-bg); border-radius: 8px; padding: 10px 12px; margin-top: 10px; white-space: pre-wrap; font-size: 14px; }
@@ -271,11 +281,48 @@ function leadRow(lead) {
   return el('div', { className: 'lead' }, info, wa, el('div', { className: 'tools' }, sel, notes, maps));
 }
 
+// Leads are grouped by business type ("nail salons", "tattoo studios"…) under headings you can
+// open and close. Which ones are open is remembered on this device.
+const typeOf = (lead) => {
+  const t = (lead.search ?? '').split(' in ')[0].trim() || 'Other';
+  return t[0].toUpperCase() + t.slice(1);
+};
+let openGroups = JSON.parse(store.get('openGroups') ?? '{}');
+const setOpen = (name, open) => { openGroups[name] = open; store.set('openGroups', JSON.stringify(openGroups)); };
+
 function render() {
   renderFilters();
   $('count').textContent = `Your leads (${leads.length})`;
   const shown = leads.filter((l) => filter === 'All' || l.status === filter).slice().reverse();
-  $('list').replaceChildren(...(shown.length ? shown.map(leadRow) : [el('p', { className: 'empty', textContent: leads.length ? 'None with this status.' : 'No leads yet. Pick where and what, then click Generate.' })]));
+  if (!shown.length) {
+    $('list').replaceChildren(el('p', { className: 'empty', textContent: leads.length ? 'None with this status.' : 'No leads yet. Pick where and what, then click Generate.' }));
+    return;
+  }
+  const groups = new Map(); // newest group first, since shown is newest first
+  for (const lead of shown) {
+    const name = typeOf(lead);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(lead);
+  }
+  const sections = [...groups].map(([name, items]) => {
+    const total = leads.filter((l) => typeOf(l) === name);
+    const todo = total.filter((l) => l.status === 'New').length;
+    const label = filter === 'All' ? `${items.length} leads · ${todo} not contacted` : `${items.length} ${filter.toLowerCase()}`;
+    const hasFresh = items.some((l) => fresh.has(l.placeId));
+    const open = openGroups[name] ?? (hasFresh || groups.size === 1);
+    const d = el('details', { className: 'group', open },
+      el('summary', {}, el('span', { textContent: name }), el('span', { className: 'meta', textContent: label })),
+      el('div', { className: 'group-body' }, ...items.map(leadRow)));
+    d.ontoggle = () => setOpen(name, d.open);
+    return d;
+  });
+  const toggleAll = (open) => () => { for (const name of groups.keys()) setOpen(name, open); render(); };
+  const bar = groups.size > 1
+    ? el('div', { className: 'chips', style: 'gap:16px' },
+      el('button', { className: 'linkbtn', type: 'button', textContent: 'Open all', onclick: toggleAll(true) }),
+      el('button', { className: 'linkbtn', type: 'button', textContent: 'Close all', onclick: toggleAll(false) }))
+    : null;
+  $('list').replaceChildren(...[bar, ...sections].filter(Boolean));
 }
 
 async function loadLeads() {
@@ -293,7 +340,10 @@ async function finish(result) {
   const why = Object.entries(result.skipped).map(([r, n]) => `${n} ${r}`).join(', ');
   status(`Done: ${result.added} new leads from ${result.area} (checked ${result.scanned}${why ? `; skipped ${why}` : ''}).`);
   filter = 'All';
-  await loadLeads();
+  leads = (await getJson('leads')).leads;
+  // Open the group(s) the new leads landed in, even if closed before.
+  for (const l of leads) if (fresh.has(l.placeId)) setOpen(typeOf(l), true);
+  render();
 }
 
 // Keeps checking a running search. Survives closing the page: the job id is remembered.
