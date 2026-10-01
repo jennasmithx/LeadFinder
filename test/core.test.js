@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoryStore } from '../src/store.js';
-import { planSearch, startGenerate, checkJob, updateLead, listLeads } from '../src/core.js';
+import { planSearch, startGenerate, checkJob, updateLead, listLeads, getSettings, saveSettings, whatsappLinkWithMessage } from '../src/core.js';
 import { handle } from '../src/api.js';
 import { buildInput, normalize } from '../src/apify.js';
 
@@ -114,4 +114,14 @@ test('on Vercel a password is required', async () => {
   const r = await call('leads', {}, { APIFY_TOKEN: 't', VERCEL: '1' });
   assert.equal(r.status, 500);
   assert.match(r.body.error, /APP_PASSWORD/);
+});
+
+test('WhatsApp message: saved, defaulted, and put into the link with the business name', async () => {
+  const store = new MemoryStore();
+  assert.match((await getSettings(store)).message, /^Hi \{business\},/);
+  await saveSettings(store, { message: 'Hi {business}, quick question?' });
+  const { message } = await getSettings(store);
+  const link = whatsappLinkWithMessage({ name: 'Glow & Co', whatsappLink: 'https://wa.me/27825551234' }, message);
+  assert.equal(link, 'https://wa.me/27825551234?text=Hi%20Glow%20%26%20Co%2C%20quick%20question%3F');
+  assert.equal(whatsappLinkWithMessage({ name: 'X', whatsappLink: '' }, message), '');
 });

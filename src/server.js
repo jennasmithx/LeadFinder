@@ -14,7 +14,7 @@ loadEnv();
 
 const server = http.createServer((req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
-  const api = pathname.match(/^\/api\/(\w+)$/);
+  const api = pathname.match(/^\/api\/([\w-]+)$/);
   if (api) return handle(req, res, api[1]);
   if (req.method === 'GET' && pathname === '/') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

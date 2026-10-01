@@ -60,6 +60,11 @@
   .empty { color: var(--muted); padding: 12px 0; }
   .stars { color: #d99a00; }
   #login { max-width: 420px; margin: 12vh auto 0; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 17px; }
+  textarea { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; width: 100%; min-height: 110px; resize: vertical; margin-top: 12px; }
+  .preview { background: var(--wa-bg); border-radius: 8px; padding: 10px 12px; margin-top: 10px; white-space: pre-wrap; font-size: 14px; }
+  code { background: var(--chip); border-radius: 4px; padding: 1px 5px; }
   @media (max-width: 560px) {
     .lead { grid-template-columns: 1fr; }
     .wa { justify-self: start; }
@@ -109,6 +114,20 @@
     </section>
 
     <section class="card">
+      <details id="msgBox">
+        <summary>Your WhatsApp message</summary>
+        <p class="hint" style="margin:8px 0 0">Every WhatsApp button opens a chat with this already typed. <code>{business}</code> becomes each business's name.</p>
+        <textarea id="message" aria-label="Your WhatsApp message"></textarea>
+        <div class="hint" style="margin-top:8px">Preview:</div>
+        <div class="preview" id="preview"></div>
+        <div class="actions" style="margin-top:12px">
+          <button class="btn primary" id="saveMsg">Save message</button>
+          <span class="hint" id="msgSaved"></span>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
       <div class="head">
         <h2 id="count">Your leads</h2>
         <button class="btn" id="download">Download Excel</button>
@@ -125,7 +144,7 @@ const store = {
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
 
-let cfg, leads = [], filter = 'All', city = 'Johannesburg', fresh = new Set(store.get('fresh')?.split(',') ?? []);
+let cfg, leads = [], message = '', filter = 'All', city = 'Johannesburg', fresh = new Set(store.get('fresh')?.split(',') ?? []);
 const picked = new Set(['beauty salons']);
 
 async function api(path, opts = {}) {
@@ -188,13 +207,33 @@ function saveLead(lead, patch) {
     .catch((err) => status(`Couldn't save: ${err.message}`, 'err'));
 }
 
+// wa.me link with your message typed in, e.g. "Hi Glow Nails, …".
+function waLink(lead) {
+  if (!message) return lead.whatsappLink;
+  return `${lead.whatsappLink}?text=${encodeURIComponent(message.replaceAll('{business}', lead.name))}`;
+}
+
+function showPreview() {
+  const name = leads.at(-1)?.name ?? 'Glow Nails';
+  $('preview').textContent = $('message').value.replaceAll('{business}', name);
+}
+$('message').oninput = () => { showPreview(); $('msgSaved').textContent = ''; };
+
+$('saveMsg').onclick = async () => {
+  try {
+    message = (await getJson('save-settings', { method: 'POST', body: JSON.stringify({ message: $('message').value }) })).message;
+    $('msgSaved').textContent = 'Saved ✓';
+    render();
+  } catch (err) { $('msgSaved').textContent = `Couldn't save: ${err.message}`; }
+};
+
 function leadRow(lead) {
   const stars = lead.rating ? el('span', { className: 'stars', textContent: `★ ${lead.rating}` }) : null;
   const meta = el('div', { className: 'meta' }, stars, stars ? ` (${lead.reviews}) · ` : '', lead.category || '');
   const name = el('div', { className: 'name', textContent: lead.name }, fresh.has(lead.placeId) ? el('span', { className: 'badge', textContent: 'NEW' }) : null);
   const info = el('div', {}, name, meta, el('div', { className: 'meta', textContent: lead.address }));
   const wa = lead.whatsappLink
-    ? el('a', { className: 'wa', href: lead.whatsappLink, target: '_blank', rel: 'noopener', textContent: `WhatsApp ${lead.phone}` })
+    ? el('a', { className: 'wa', href: waLink(lead), target: '_blank', rel: 'noopener', textContent: `WhatsApp ${lead.phone}` })
     : el('span', { className: 'meta', textContent: lead.phone });
 
   const sel = el('select', { 'aria-label': 'Status' }, ...cfg.statuses.map((s) => el('option', { value: s, textContent: s, selected: s === lead.status })));
@@ -282,7 +321,12 @@ $('download').onclick = async () => {
 async function start() {
   cfg ??= await (await fetch('/api/config')).json();
   if (cfg.needsPassword && !store.get('pw')) return showLogin();
-  try { await loadLeads(); } catch (err) { if (err.message !== 'Wrong password') status(err.message, 'err'); return; }
+  try {
+    message = (await getJson('settings')).message;
+    $('message').value = message;
+    await loadLeads();
+    showPreview();
+  } catch (err) { if (err.message !== 'Wrong password') status(err.message, 'err'); return; }
   $('app').hidden = false;
   if (!cfg.source) status('No API key found. Add APIFY_TOKEN (see README).', 'err');
 

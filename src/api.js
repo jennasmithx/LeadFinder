@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import { createStore } from './store.js';
 import { buildWorkbook } from './sheet.js';
 import { CITIES, BUSINESS_TYPES } from './cities.js';
-import { STATUSES, UserError, pickSource, startGenerate, checkJob, updateLead, listLeads } from './core.js';
+import {
+  STATUSES, UserError, pickSource, startGenerate, checkJob, updateLead, listLeads,
+  getSettings, saveSettings, whatsappLinkWithMessage,
+} from './core.js';
 
 // Shared by the Vercel functions in /api and the local server (src/server.js).
 const routes = {
@@ -21,9 +24,15 @@ const routes = {
   generate: { method: 'POST', run: (ctx, { body }) => startGenerate(ctx, body) },
   job: { method: 'GET', run: (ctx, { query }) => checkJob(ctx, query.id) },
   lead: { method: 'POST', run: ({ store }, { body }) => updateLead(store, body) },
+  settings: { method: 'GET', run: ({ store }) => getSettings(store) },
+  'save-settings': { method: 'POST', run: ({ store }, { body }) => saveSettings(store, body) },
   export: {
     method: 'GET',
-    run: async ({ store }) => ({ file: await buildWorkbook(await listLeads(store)) }),
+    run: async ({ store }) => {
+      const [leads, { message }] = await Promise.all([listLeads(store), getSettings(store)]);
+      const withMessage = leads.map((l) => ({ ...l, whatsappLink: whatsappLinkWithMessage(l, message) }));
+      return { file: await buildWorkbook(withMessage) };
+    },
   },
 };
 

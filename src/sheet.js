@@ -33,7 +33,8 @@ export async function buildWorkbook(leads) {
       Object.fromEntries(
         COLUMNS.map(({ key }) => {
           const v = lead[key] ?? '';
-          return [key, LINK_KEYS.has(key) && v ? { text: v, hyperlink: v } : v];
+          // Show the short link (without the typed-in message) so the cell stays readable.
+          return [key, LINK_KEYS.has(key) && v ? { text: v.split('?')[0], hyperlink: v } : v];
         }),
       ),
     );

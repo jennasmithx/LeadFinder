@@ -4,6 +4,28 @@ import { searchPlaces } from './places.js';
 import { toLead, rejectReason } from './leads.js';
 
 export const STATUSES = ['New', 'Messaged', 'Replied', 'Interested', 'Not interested'];
+
+export const DEFAULT_MESSAGE =
+  "Hi {business}, I came across your business on Google Maps and noticed you don't have a website yet. " +
+  'I build simple, affordable websites for small businesses. Would you like to see an example?';
+
+// The WhatsApp chat link with your message already typed, e.g. "Hi Glow Nails, …".
+export function whatsappLinkWithMessage(lead, template) {
+  if (!lead.whatsappLink || !template) return lead.whatsappLink;
+  const text = template.replaceAll('{business}', lead.name);
+  return `${lead.whatsappLink}?text=${encodeURIComponent(text)}`;
+}
+
+export async function getSettings(store) {
+  return { message: DEFAULT_MESSAGE, ...(await store.get('settings', {})) };
+}
+
+export async function saveSettings(store, { message }) {
+  const settings = await getSettings(store);
+  if (message !== undefined) settings.message = String(message).slice(0, 1000);
+  await store.set('settings', settings);
+  return settings;
+}
 const MAX_JOBS = 20;
 
 export class UserError extends Error {

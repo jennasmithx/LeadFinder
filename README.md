@@ -6,7 +6,8 @@ Finds businesses on Google Maps with **no website** and a **WhatsApp number**. P
 - **Every Generate searches the next suburb** (Sandton, then Randburg, then Rosebank…), so you get new businesses each time and never duplicates.
 - Filters: minimum star rating, minimum number of reviews, landlines on or off.
 - Each lead has a **WhatsApp button**, a Google Maps link, a **status** (New → Messaged → Replied → Interested / Not interested) and **notes**.
-- **Download Excel** whenever you want a spreadsheet of everything.
+- **Your WhatsApp message:** write it once with `{business}` where the name goes. Every WhatsApp button then opens the chat with it already typed, e.g. *"Hi Glow Nails, I came across your business…"*.
+- **Download Excel** whenever you want a spreadsheet of everything (its WhatsApp links include your message too).
 - Password protected.
 
 ## Put it online with Vercel (works on your phone)
