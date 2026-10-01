@@ -1,0 +1,26 @@
+{
+  "name": "lead-finder",
+  "version": "1.0.0",
+  "description": "Find businesses on Google Maps with no website and a WhatsApp number, log them to Excel",
+  "main": "src/index.js",
+  "scripts": {
+    "find": "node src/index.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jennasmithx/testing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jennasmithx/testing/issues"
+  },
+  "homepage": "https://github.com/jennasmithx/testing#readme",
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "libphonenumber-js": "^1.13.14"
+  },
+  "type": "module"
+}
